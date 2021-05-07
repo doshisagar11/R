@@ -1,0 +1,179 @@
+library(bindr)
+library(bindrcpp)
+library(dplyr)
+library(forecast)
+library(ggplot2)
+library(lazyeval)
+library(plotly)
+library(plyr)
+library(scales)
+library(shiny)
+library(tibble)
+library(tidyr)
+library(tidyselect)
+library(timeDate)
+library(xtable)
+getwd()
+setwd("C:/Users/Sagar Doshi/Desktop/airbnb-zillow-data-challenge-master")
+
+#Work on Zillow Data set
+
+
+z<-read.csv("Zip_Zhvi_2bedroom.csv", header= TRUE)
+z[ ,101:200]
+z1<-filter(z, City == "New York")
+
+##taking out unwanted columns
+z2 = subset(z1, select = -c(X1996.04:X2007.05) )
+
+##Creating a column mean and rounding it
+z3<-data.frame(RegionName=z2[,2], Means=rowMeans(z2[ ,15:20]))
+               
+#Bar Plot for year 2017
+#In Red
+p<-ggplot(data=z3, aes(x=factor(RegionName), y=Means))+
+            geom_bar(stat="identity",width=1,color="blue", fill="red")+
+            labs(x="Region Name ", y="Means")+
+            geom_text(aes(label=RegionName), vjust=1.6, color="Black", size=3.5)+
+            theme_minimal()
+p
+
+#In Variation of Blue
+p<-ggplot(data=z3, aes(x=factor(RegionName), y=Means,color="Red",fill=Means))+
+  geom_bar(stat="identity",width=1)+
+  labs(x="Region Name ", y="Means")+
+  geom_text(aes(label=RegionName), vjust=1.6, color="Yellow", size=3.5)+
+  scale_y_continuous(breaks= pretty_breaks(),labels = comma)+
+  theme_minimal()
+#labels for converting exponential to numbers
+p
+
+
+#Line plot for 10years (2007-2017)
+z4<-gather(z2,X2007.06:X2017.06,key="year",value="cases")
+str(z4)
+z4$RegionName <- as.factor(z4$RegionName)
+z4$cases <- as.factor(z4$cases)
+ggplot(z4, aes(x = year, y = RegionName, group = RegionName, col=factor(RegionName))) +
+  geom_line(mapping = aes(x = year, y = cases)) +
+  geom_line(mapping = aes(x = year, y = RegionName)) +
+  scale_y_continuous(breaks= pretty_breaks(),labels= comma,sec.axis= sec_axis(~./2, name="cases"))
+
+#With Hover 
+q<-ggplot(z4,aes(x = year, y = RegionName, group = RegionName, colour=factor(RegionName))) +
+  geom_line(mapping = aes(x = year, y = cases)) +
+  geom_line(mapping = aes(x = year, y = RegionName)) +
+  scale_y_continuous(sec.axis= sec_axis(~./2, name="cases"))
+
+qq<-ggplotly(q)
+qq
+
+
+
+# Work on Airbnb Data Set
+a<-read.csv("updated_listings.csv", header= TRUE)
+a1<-filter(a, city == "New York")
+a2<-filter(a1, bedrooms == 2)
+
+str(a2)
+temp<-a2[!a2$zipcode=="",] #taking out the Null from Zipcode
+str(temp)
+temp$zipcode <- as.factor(as.character(temp$zipcode))
+str(temp)
+sum(!duplicated(temp$zipcode))
+sum(!duplicated(a2$zipcode))
+
+#Common zipcodes from both the dataset
+zip_updated <- merge(z3,temp,by.x = "RegionName", by.y = "zipcode")
+str(zip_updated)
+zip_updated$RegionName <- as.factor(zip_updated$RegionName)
+levels(zip_updated$RegionName)
+
+#RegionName vs Mean Prices
+price_means<-aggregate(.~RegionName, data=zip_updated, mean)
+ggplot(price_means, aes(x=RegionName, y=price)) + geom_point(size=4) +
+       geom_text(aes(label=round(price,digits=1)), vjust=1.6, color="Black", size=3.5)
+
+str(price_means)
+rm(M1)
+
+#ggplot visualization of RegionName vs Mean Prices
+ggplot(price_means, aes(x=RegionName, y=Means)) + 
+  geom_point(mapping = aes(x = RegionName, y = Means, color = "Means"))+
+  geom_point(mapping = aes(x = RegionName, y = price)) +
+  geom_text(aes(label=round(price,digits=1)), vjust=-0.6, color="Blue", size=3.5)+
+  geom_text(aes(label=round(Means,digits=1)), vjust=1.3, color="Red", size=3.5)+
+  scale_y_continuous(breaks= pretty_breaks(),labels = comma,sec.axis= sec_axis(~./10000, name="Price"))
+
+#,breaks = price_means$Additional_Income
+#plotly visualization of RegionName vs Mean Prices
+plot_ly() %>%
+  add_lines(x = price_means$RegionName, y = price_means$Means, name = "Means",type = "scatter", mode = "lines") %>%
+  add_lines(x = price_means$RegionName, y = price_means$price, name = "Price", yaxis = "y2",type = "scatter", mode = "lines") %>%
+  layout(
+    title = "Chart Summary", yaxis2 = list(overlaying = "y", side = "right"),
+    xaxis = list(title="RegionName")
+  )
+
+#finding the ratio & additional Income
+price_means <- price_means %>% mutate(ratio = Means / price)
+price_means <- price_means %>% mutate(Additional_Income = guests_included*extra_people)
+price_means <- price_means %>% mutate(Total = price+Additional_Income)
+str(price_means)
+ggplot(price_means, aes(x=RegionName, y=ratio)) + geom_point(size=4) +
+  geom_text(aes(label=round(ratio,digits=2)), vjust=1.6, color="Red", size=3.5)
+
+#Ratio Plus Additional Income
+ggplot(price_means, aes(x=RegionName, y=ratio)) + 
+  geom_point(mapping = aes(x = RegionName, y = ratio, color = "Ratio"))+
+  geom_point(mapping = aes(x = RegionName, y = Total)) +
+  geom_text(aes(label=round(Total,digits=1)), vjust=-0.6, color="Blue", size=3.5)+
+  geom_text(aes(label=round(ratio,digits=1)), vjust=1.3, color="Red", size=3.5)+
+  scale_y_continuous(breaks= pretty_breaks(),labels = comma,sec.axis= sec_axis(~./30, name="Price + Additional Income"))
+
+#10 years plot of 11 zipcodes
+z5 <- merge(price_means,z4,by.x = "RegionName", by.y = "RegionName")
+str(z5)
+z5$RegionName <- as.character(z5$RegionName)
+z5$RegionName <- as.numeric(z5$RegionName)
+r<-ggplot(z5,aes(x = year, y = RegionName, group = RegionName, colour=factor(RegionName))) +
+  geom_line(mapping = aes(x = year, y = cases)) +
+  geom_line(mapping = aes(x = year, y = RegionName)) +
+  scale_y_continuous(sec.axis= sec_axis(~./2, name="cases"))
+
+rr<-ggplotly(r)
+rr
+
+#Time Series
+
+ts = ts(t(z2[,8:128]))
+plot(ts[13,],type="o",col="blue")
+
+mn = naive(ts[,1],h=12,level=c(90,95),fan=FALSE,lambda=NULL) 
+plot(mn)
+
+md = rwf(ts[,1],h=12,drift=T,level=c(90,95),fan=FALSE,lambda=NULL) 
+plot(md)
+
+accuracy(md)
+accuracy(mn)
+
+auto.arima(ts[,2])
+forecast(auto.arima(ts[,2]))
+plot(forecast(auto.arima(ts[,2])))
+
+
+#Zipcodes present only in airbnb dataset
+zip_updated1 <- temp[!(temp$zipcode %in% z3$RegionName),]
+
+str(zip_updated1)
+price_means1<-aggregate(.~zipcode, data=zip_updated1, mean)
+price_means1 <- price_means1 %>% mutate(Additional_Income = guests_included*extra_people)
+
+ggplot(price_means1, aes(x=zipcode, y=price)) + geom_point(size=4) +
+  geom_text(aes(label=round(price,digits=1)), vjust=1.6, color="Red", size=3.5)
+
+
+
+Zillow had property buying data
+Airbnb had property renting data
